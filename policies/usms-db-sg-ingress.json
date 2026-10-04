@@ -5,7 +5,7 @@
     "ToPort": 5432,
     "UserIdGroupPairs": [
       {
-        "GroupId": "sg-724ff97f0c4388178",
+        "GroupId": "sg-630a445a4351e4dc5",
         "Description": "PostgreSQL from the USMS application tier"
       }
     ]
