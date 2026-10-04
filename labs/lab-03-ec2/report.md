@@ -1,332 +1,692 @@
+# Lab 03: EC2 Instances — Report
 
-# DSO303 – Lab 03 Report
-## Amazon EC2 and Deploying the USMS Application
 
-### 1. Introduction
+## Objectives
 
-This laboratory focused on deploying the University Student Management System (USMS) using Amazon EC2 within the VPC created in the previous laboratory. The lab combined resources from IAM and VPC, including the EC2 instance profile, public and private subnets, security groups, and routing configuration.
+By the end of this lab, learners will:
 
-A two-tier architecture was implemented. The web tier was deployed in a public subnet, while the database tier was placed in a private subnet. The web server was configured using EC2 user data, assigned an Elastic IP, and provided with a separate EBS data volume. The lab also demonstrated IAM instance profiles, key-pair security, AMIs, instance persistence, and verification of the network and security configuration.
+1. Launch EC2 instances (virtual servers) in both public and private subnets
+2. Understand the bastion host pattern for secure access to private instances
+3. Integrate IAM instance profiles with EC2 to enable secure AWS service access
+4. Configure security groups to enforce network isolation and access control
+5. Generate and secure key pairs for SSH access
 
-### 2. Objectives
 
-The main objectives of this laboratory were:
+## Architecture Overview
 
-- To understand the main components of an EC2 instance, including AMIs, instance types, and storage.
-- To launch EC2 instances into specific public and private subnets.
-- To configure EC2 instances with security groups and IAM instance profiles.
-- To create and securely manage an EC2 key pair.
-- To use user-data for automatic instance configuration.
-- To understand the difference between auto-assigned public IP addresses and Elastic IP addresses.
-- To create and attach an EBS volume.
-- To implement a two-tier web and database architecture.
-- To create an AMI from a configured EC2 instance.
-- To verify that the deployed infrastructure persists after restarting the Floci environment.
+Lab 3 implements a two-tier EC2 deployment within the VPC built in Lab 2:
 
-### 3. Prerequisites and Previous Lab Integration
-
-The laboratory depended on the resources created in Lab 01 and Lab 02. From Lab 01, the EC2 instance profile `usms-ec2-app-profile` and the associated `usms-ec2-app-role` were reused. From Lab 02, the VPC, public and private subnets, security groups, Internet Gateway, NAT Gateway, and route tables were reused.
-
-The main network used the `10.0.0.0/16` VPC with the following subnet structure:
-
-| Resource | CIDR | Availability Zone |
-|---|---|---|
-| Public Subnet A | `10.0.1.0/24` | `us-east-1a` |
-| Public Subnet B | `10.0.2.0/24` | `us-east-1b` |
-| Private Subnet A | `10.0.3.0/24` | `us-east-1a` |
-| Private Subnet B | `10.0.4.0/24` | `us-east-1b` |
-
-This demonstrated how resources from multiple AWS services and previous labs can be combined to create a complete cloud infrastructure.
-
-### 4. Architecture
-
-The final architecture consisted of two main tiers:
-
-```text
-                         Internet
-                            |
-                     Internet Gateway
-                            |
-                   Public Subnet A
-                     10.0.1.0/24
-                            |
-                    usms-web-01
-                     EC2 t3.micro
-                            |
-                    usms-app-sg
-                            |
-                     Elastic IP
-                            |
-                    ----------------
-                            |
-                    Private Subnet A
-                     10.0.3.0/24
-                            |
-                     usms-db-01
-                     EC2 t3.micro
-                            |
-                       usms-db-sg
-                            |
-                    PostgreSQL : 5432
-````
-
-The web instance was deployed in the public subnet and was accessible through a public address. The database instance was deployed in the private subnet and did not have a public address. The database security group allowed PostgreSQL traffic only from the web tier's security group.
-
-### 5. Implementation
-
-#### 5.1 Environment Preparation
-
-The Floci environment was started using hybrid storage, and configuration files from the previous labs were loaded. These configuration files provided the required subnet, security group, instance profile, and Availability Zone information.
-
-The existing Lab 02 network was verified before deploying EC2 resources. This confirmed that the VPC infrastructure required by Lab 03 was available and correctly configured.
-
-#### 5.2 AMI Selection
-
-An AMI was selected programmatically rather than using a hard-coded image ID. The lab emphasized that AMI IDs can differ between AWS regions and can change when new operating system images are released.
-
-The lab also introduced the use of AWS Systems Manager public parameters as the preferred approach on real AWS for resolving the latest Amazon Linux AMI.
-
-#### 5.3 EC2 Key Pair
-
-An EC2 key pair named `usms-app-key` was created for the web application. The private key was stored in:
-
-```text
-outputs/usms-app-key.pem
 ```
-
-The file permissions were restricted using `chmod 600`. The private key was also verified as Git-ignored to prevent accidental exposure or committing of sensitive credentials.
-
-#### 5.4 User Data Configuration
-
-A bootstrap script named `user-data.sh` was created for the USMS web server. The script was designed to run during the first boot of an EC2 instance.
-
-The script performs the following tasks:
-
-* Updates the system.
-* Installs nginx.
-* Retrieves instance metadata using IMDSv2.
-* Obtains the instance ID, Availability Zone, and private IP address.
-* Creates the USMS student portal page.
-* Creates a `health.json` endpoint.
-* Starts nginx automatically.
-
-The script was checked for syntax errors and kept below the EC2 user-data size limitation.
-
-#### 5.5 Launching the Web Server
-
-The web instance was launched as `usms-web-01` with the following configuration:
-
-| Configuration    | Value                  |
-| ---------------- | ---------------------- |
-| Instance Type    | `t3.micro`             |
-| Subnet           | `usms-public-subnet-a` |
-| Security Group   | `usms-app-sg`          |
-| Key Pair         | `usms-app-key`         |
-| Instance Profile | `usms-ec2-app-profile` |
-| Tier             | Web                    |
-
-The instance was launched using an EC2 `run-instances` request based on a JSON CLI skeleton.
-
-#### 5.6 Instance Verification
-
-After launch, the instance was verified using `describe-instances`. The important properties included its running state, subnet, Availability Zone, private IP address, public IP address, security group, instance profile, and key pair.
-
-The expected configuration placed `usms-web-01` in `usms-public-subnet-a`, with a private address in the `10.0.1.0/24` range and a public address assigned through the public subnet configuration.
-
-#### 5.7 IAM Permission Chain
-
-The IAM permission chain was traced from the EC2 instance to the policy:
-
-```text
-EC2 Instance
-     ↓
-Instance Profile
-     ↓
-IAM Role
-     ↓
-USMSStudentDataReadWrite Policy
-```
-
-The policy provides permissions such as `s3:GetObject`, `s3:PutObject`, and `s3:ListBucket` for the intended USMS student-data resources.
-
-An important concept demonstrated in this step was that an IAM policy can refer to a resource that does not yet exist. The policy is valid, but its permissions only become effective against that resource once it is created.
-
-#### 5.8 User Data Verification
-
-The user-data stored by EC2 was retrieved, decoded, and compared with the original local script.
-
-The verification confirmed that what EC2 stored was byte-identical to the original user-data script. This provided stronger evidence than simply assuming that the user-data submission succeeded because the API call returned successfully.
-
-#### 5.9 Elastic IP
-
-An Elastic IP named `usms-web-eip` was allocated and associated with `usms-web-01`.
-
-The Elastic IP provided a stable public address for the web server. Unlike an automatically assigned public IP, the Elastic IP remains associated with the AWS account and can be attached to another instance when required.
-
-#### 5.10 Application Testing
-
-The USMS application was tested through its public address. In the Floci environment, the HTTP request may fail because Floci models the EC2 API but does not boot a real operating system or execute nginx inside the simulated instance.
-
-Therefore, the network configuration was verified instead. The checks confirmed:
-
-1. The EC2 instance was running.
-2. The subnet had a route to the Internet Gateway.
-3. The Internet Gateway was attached to the VPC.
-4. The security group allowed TCP port 80.
-5. The instance had a public address.
-6. The network ACL permitted the traffic.
-
-The missing seventh component in Floci was the actual process listening on port 80, which would be available on real AWS after the operating system and nginx were booted.
-
-#### 5.11 EBS Data Volume
-
-An additional 8 GiB `gp3` EBS volume named `usms-web-data-vol` was created and attached to `usms-web-01`.
-
-The volume was created in the same Availability Zone as the EC2 instance because EBS volumes can only be attached to instances within the same Availability Zone.
-
-The data volume was configured independently from the root volume, allowing it to survive instance termination when `DeleteOnTermination` is set to `False`.
-
-#### 5.12 Database Tier
-
-A second EC2 instance named `usms-db-01` was launched in `usms-private-subnet-a`.
-
-| Configuration        | Value                   |
-| -------------------- | ----------------------- |
-| Instance Type        | `t3.micro`              |
-| Subnet               | `usms-private-subnet-a` |
-| Security Group       | `usms-db-sg`            |
-| Public IP            | None                    |
-| IAM Instance Profile | None                    |
-| Tier                 | Data                    |
-
-The database instance deliberately did not receive an IAM instance profile because it did not require access to S3. This follows the principle of least privilege.
-
-#### 5.13 Two-Tier Security Verification
-
-The database security group was verified to allow PostgreSQL traffic on port `5432` only from the web server's security group.
-
-```text
 Internet
-   |
-   v
-usms-web-01
-usms-app-sg
-   |
-   | TCP 5432
-   v
-usms-db-01
-usms-db-sg
+  |
+  | SSH (port 22, 0.0.0.0/0)
+  |
+  v
+Public Subnet (10.0.1.0/24)
+  |
+  | Bastion Host (usms-bastion)
+  | Instance ID: i-9db267a74ff57
+  | Public IP: 127.0.0.1
+  | Security Group: usms-bastion
+  |
+  v
+Private Subnet (10.0.3.0/24)
+  |
+  | SSH (within VPC)
+  |
+  v
+App Server (usms-app)
+Instance ID: i-b89ddda825ac0c44f
+Private IP: 172.22.0.4
+IAM Role: usms-ec2-app-role
+  |
+  | API calls (IAM role)
+  |
+  v
+S3 Bucket (usms-student-data)
 ```
 
-The database subnet used the NAT Gateway for outbound connectivity but had no route directly to the Internet Gateway. Therefore, the database tier was not directly reachable from the public internet.
+**Key Design Principles:**
 
-#### 5.14 Stop and Start Testing
+- Bastion Pattern: Only the bastion is exposed to the internet; the app server is hidden in the private subnet
+- Defense in Depth: Multiple layers of security (subnets and security groups)
+- IAM Role-Based Access: App server uses temporary credentials via instance profile, not hardcoded keys
+- No Internet Exposure: App server cannot be reached directly from the internet
 
-The web server was stopped and started to observe the behaviour of its network addresses.
+---
 
-The private IP address remained associated with the instance, while the Elastic IP remained available for the instance after it was started again.
+## Resources Created
 
-The exercise demonstrated why a stable Elastic IP is useful for services that require a consistent public address. The lab also noted that Floci may not reproduce every real AWS networking behaviour exactly.
+### 1. Bastion Host (usms-bastion)
 
-#### 5.15 Persistence Verification
+| Property | Value |
+|----------|-------|
+| Instance ID | i-9db267a74ff57fb5f |
+| Instance Type | t2.micro |
+| Subnet | Public Subnet A (subnet-da5fedaa) - 10.0.1.0/24 |
+| Security Group | usms-bastion-sg (sg-c6deb3895f4fe63c6) |
+| Public IP | 127.0.0.1 (Floci localhost mapping) |
+| Private IP | 10.0.1.x (assigned by VPC DHCP) |
+| IAM Role | None (bastion doesn't need AWS API access) |
+| Key Pair | usms-lab-key |
+| Status | Running |
 
-The Floci environment was restarted and the EC2 resources were checked again.
+**Security Group Rules (usms-bastion-sg):**
+- Inbound: TCP port 22 (SSH) from 0.0.0.0/0 (anywhere)
+- Outbound: All traffic (default allow)
 
-The persistence verification confirmed that the instances, subnet associations, security groups, EBS volumes, and Elastic IP resources remained available after restarting the emulator.
+**Access Pattern:** Direct SSH from your local machine to the bastion's public IP
 
-This demonstrated the importance of using persistent or hybrid storage when working with the Floci environment.
-
-#### 5.16 Golden AMI
-
-An AMI named `usms-web-golden` was created from the configured web server.
-
-The purpose of the AMI was to capture an already configured version of the web server so that future instances can be launched from a prepared image rather than reinstalling and configuring everything from the beginning.
-
-The golden AMI is also intended for use in a later Auto Scaling laboratory.
-
-### 6. Verification
-
-A dedicated verification script, `verify-lab-03.sh`, was created to check the main components of the laboratory.
-
-The verification covered:
-
-* Floci environment.
-* VPC and subnet dependencies.
-* EC2 key pair.
-* Web instance configuration.
-* IAM instance profile.
-* User data.
-* Public IP and Elastic IP.
-* EBS data volume.
-* Database instance.
-* Database security configuration.
-* Golden AMI.
-* Resource tagging.
-* Configuration files.
-* JSON validity.
-* Git security.
-
-The expected successful result was:
-
-```text
-PASS=36  FAIL=0
+```bash
+ssh -i outputs/usms-lab-key.pem ec2-user@127.0.0.1
 ```
 
-The verification process checked not only whether resources existed, but also whether important security and configuration properties were correct, such as the database having no public address and the private key not being tracked by Git.
+Note: Floci maps the public IP to 127.0.0.1 (localhost) for local testing convenience.
 
-### 7. Results
 
-The laboratory successfully established the intended EC2-based USMS architecture.
+### 2. Application Server (usms-app)
 
-| Component               | Result                           |
-| ----------------------- | -------------------------------- |
-| Web EC2 instance        | `usms-web-01`                    |
-| Web subnet              | Public subnet A                  |
-| Web security group      | `usms-app-sg`                    |
-| Web IAM profile         | `usms-ec2-app-profile`           |
-| Elastic IP              | `usms-web-eip`                   |
-| Data volume             | `usms-web-data-vol`              |
-| Database EC2 instance   | `usms-db-01`                     |
-| Database subnet         | Private subnet A                 |
-| Database security group | `usms-db-sg`                     |
-| Database public IP      | None                             |
-| Golden AMI              | `usms-web-golden`                |
-| Private key             | Git-ignored and permission `600` |
-| Verification            | `PASS=36 FAIL=0` expected        |
+| Property | Value |
+|----------|-------|
+| Instance ID | i-b89ddda825ac0c44f |
+| Instance Type | t2.micro |
+| Subnet | Private Subnet A (subnet-6739a4fc) - 10.0.3.0/24 |
+| Security Group | usms-app-sg (sg-630a445a4351e4dc5) |
+| Public IP | None (private subnet, no internet gateway) |
+| Private IP | 172.22.0.4 |
+| IAM Instance Profile | usms-ec2-app-profile |
+| IAM Role | usms-ec2-app-role |
+| Attached Policies | USMSStudentDataReadWrite (S3 bucket access from Lab 1) |
+| Key Pair | usms-lab-key |
+| Status | Running |
 
-The laboratory therefore demonstrated the deployment of a complete two-tier compute architecture using EC2, EBS, IAM, VPC networking, security groups, and Elastic IP.
+**Security Group Rules (usms-app-sg):**
+- Inbound HTTP (80): 0.0.0.0/0 (from internet, for web traffic)
+- Inbound HTTPS (443): 0.0.0.0/0 (from internet, for secure web)
+- Inbound SSH (22): 10.0.0.0/16 (from within VPC, via bastion)
+- Outbound: All traffic (default allow, for NAT and S3 calls)
 
-### 8. Floci Limitations
+**Access Pattern:** SSH only via bastion (two-hop, never direct from internet)
 
-An important part of this laboratory was understanding the difference between the Floci emulator and real AWS.
+```bash
+ssh -i outputs/usms-lab-key.pem ec2-user@127.0.0.1
+ssh -i /tmp/usms-lab-key.pem ec2-user@172.22.0.4
+```
 
-Floci models many EC2 API-level resources, including instances, states, tags, volumes, key pairs, Elastic IP relationships, and user-data storage. However, it does not boot a real operating system inside every simulated EC2 instance.
+**AWS Access Pattern:** Uses IAM instance profile for S3 and other AWS services
 
-Therefore, the following behaviours could not be fully observed in Floci:
+```bash
+aws s3 ls usms-student-data/
+```
 
-* Actual operating system boot.
-* Execution of cloud-init and user-data.
-* nginx running inside the instance.
-* Instance Metadata Service credentials.
-* Actual security-group packet enforcement.
-* SSH access.
-* Real internet routing to the Elastic IP.
-* Real CPU and memory behaviour.
 
-These limitations were considered when interpreting the application connectivity tests.
 
-### 9. What I Learned
+### 3. Bastion Security Group (usms-bastion-sg)
 
-From this laboratory, I understood how EC2 fits together with the networking and IAM resources created in the previous laboratories. The most important concept was that an EC2 instance is not an isolated resource. Its functionality depends on the AMI, subnet, route table, security group, IAM instance profile, storage, and public addressing configuration.
+```
+Group ID: sg-c6deb3895f4fe63c6
+VPC ID: vpc-007ad7b8
+Name: usms-bastion-sg
+```
 
-I also learned the importance of verifying infrastructure instead of simply trusting that a command succeeded. The user-data verification, two-tier security verification, and persistence test provided evidence that the configuration was actually stored and connected as intended.
+**Ingress Rules:**
 
-The laboratory also improved my understanding of the difference between an automatically assigned public IP and an Elastic IP, as well as the importance of placing database resources in private subnets and restricting database access to the application tier.
+| Protocol | Port Range | Source | Description |
+|----------|-----------|--------|-------------|
+| TCP | 22 | 0.0.0.0/0 | SSH from anywhere (internet) |
 
-### 10. Conclusion
+**Egress Rules:**
+- All protocols, all ports to 0.0.0.0/0 (default allow)
 
-This laboratory successfully demonstrated the deployment of the USMS application using Amazon EC2 in a two-tier architecture. The web server was deployed in a public subnet with an IAM instance profile, security group, user-data bootstrap script, Elastic IP, and additional EBS storage. A separate database-tier instance was deployed in a private subnet with restricted access from the web tier.
+**Design Note:** This is intentionally permissive because the bastion is the only jump point. In production, restrict the source CIDR to your organization's IP range.
 
-The laboratory also demonstrated secure key management, IAM role-based access, persistent storage, AMI creation, infrastructure verification, and resource persistence. Although Floci cannot simulate every behaviour of real AWS, it provided a useful environment for understanding EC2 resource relationships and cloud infrastructure configuration. Overall, the lab provided a strong foundation for the next stages of the USMS cloud deployment.
 
-`
+### 4. Application Security Group (usms-app-sg)
+
+```
+Group ID: sg-630a445a4351e4dc5
+VPC ID: vpc-007ad7b8
+Name: usms-app-sg
+```
+
+**Ingress Rules:**
+
+| Protocol | Port Range | Source | Description |
+|----------|-----------|--------|-------------|
+| TCP | 80 | 0.0.0.0/0 | HTTP from internet |
+| TCP | 443 | 0.0.0.0/0 | HTTPS from internet |
+| TCP | 22 | 10.0.0.0/16 | SSH from within VPC (bastion) |
+
+**Egress Rules:**
+- All protocols, all ports to 0.0.0.0/0 (for NAT, S3 API calls, etc.)
+
+**Design Note:** SSH is restricted to the VPC CIDR (10.0.0.0/16), so it's inaccessible from the internet. Only the bastion can reach it via SSH.
+
+
+
+### 5. Key Pair (usms-lab-key)
+
+**Location:** outputs/usms-lab-key.pem
+**Permissions:** 600 (read-only for owner)
+**Size:** approximately 1.7 KB (standard OpenSSH format)
+**Status:** Ignored by .gitignore (never committed)
+
+**Usage:**
+```bash
+ssh -i outputs/usms-lab-key.pem ec2-user@127.0.0.1
+```
+
+**Security Measures:**
+- Private key stored locally, never shared
+- Not committed to git (.gitignore blocks it)
+- Permissions locked to owner only (chmod 600)
+
+
+
+## Step-by-Step Implementation
+
+### Step 1: Identify Latest Amazon Linux 2 AMI
+
+**Purpose:** Find the official, most recent Amazon Linux 2 image for both instances.
+
+**Command Executed:**
+```bash
+aws ec2 describe-images \
+  --owners amazon \
+  --filters "Name=name,Values=amzn2-ami-hvm-*-x86_64-gp2" \
+  --query 'sort_by(Images, &CreationDate)[-1].[ImageId,Name,CreationDate]' \
+  --output table
+```
+
+Step 1: AMI Discovery- ![alt text](screenshots/step1-AMIs.png)
+
+**Key Selection Criteria:**
+- Owner: Amazon official (not community or marketplace)
+- Name pattern: amzn2-ami-hvm-*-x86_64-gp2 (Amazon Linux 2, HVM, 64-bit, GP2 storage)
+- Latest: Sorted by creation date, take the newest
+
+
+### Step 2: Create Bastion Security Group
+
+**Purpose:** Define the security perimeter for the bastion host (SSH only from internet).
+
+**Command Executed:**
+```bash
+aws ec2 create-security-group \
+  --group-name usms-bastion-sg \
+  --description "USMS bastion host: SSH from the internet" \
+  --vpc-id vpc-007ad7b8 \
+  --tag-specifications 'ResourceType=security-group,Tags=[{Key=Name,Value=usms-bastion-sg},{Key=Project,Value=USMS},{Key=Tier,Value=bastion}]'
+```
+
+**Result Created:**
+```
+Group ID: sg-c6deb3895f4fe63c6
+Name: usms-bastion-sg
+VPC: vpc-007ad7b8
+```
+
+Step 2: Bastion SG Created - ![alt text](screenshots/step2-security_group.png)
+
+
+**Key Points:**
+- Security group is VPC-specific (not EC2-Classic, deprecated)
+- Tagged with Project=USMS for cost tracking and automation
+- Initially has no inbound rules (will add SSH next)
+
+---
+
+### Step 3: Authorize SSH on Bastion Security Group
+
+**Purpose:** Allow inbound SSH from anywhere (the entire internet).
+
+**Command Executed:**
+```bash
+aws ec2 authorize-security-group-ingress \
+  --group-id sg-c6deb3895f4fe63c6 \
+  --protocol tcp --port 22 --cidr 0.0.0.0/0
+```
+
+**Result Created:**
+```
+Ingress Rule: tcp/22 from 0.0.0.0/0
+```
+Step 3: Bastion SSH Rule - ![alt text](screenshots/step3-launch_bastion.png)
+
+**Security Consideration:** 0.0.0.0/0 means the entire internet can attempt SSH to the bastion. In production, restrict to your organization's IP (e.g., 203.0.113.0/24). The bastion itself becomes a choke point for SSH access to private instances.
+
+
+### Step 4: Assume Developer Role for Instance Launch
+
+**Purpose:** Escalate permissions from regular user to developer role (which has EC2 launch permissions).
+
+**Command Executed:**
+```bash
+aws sts assume-role \
+  --role-arn "arn:aws:iam::000000000000:role/usms-developer-role" \
+  --role-session-name lab03-ec2-launch \
+  --profile usms-dev
+```
+
+**Result Created:**
+```
+Temporary Credentials:
+  AccessKeyId: ASIA...
+  SecretAccessKey: ...
+  SessionToken: ...
+  Expiration: 1 hour
+```
+
+Step 4: Assume Developer Role - ![alt text](screenshots/step4-app_server_launch.png)
+
+**Why This Pattern:**
+- Regular users (usms-dev-01) cannot launch EC2
+- Developers assume a temporary role with elevated permissions
+- Role-based access control (RBAC) enables fine-grained privilege escalation
+- Temporary credentials auto-expire for security
+
+
+### Step 5: Launch Bastion Instance
+
+**Purpose:** Create the bastion host in the public subnet with SSH access enabled.
+
+**Command Executed:**
+```bash
+aws ec2 run-instances \
+  --image-id ami-xxxxxxxx \
+  --instance-type t2.micro \
+  --subnet-id subnet-da5fedaa \
+  --security-group-ids sg-c6deb3895f4fe63c6 \
+  --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=usms-bastion},{Key=Project,Value=USMS},{Key=Tier,Value=bastion}]'
+```
+
+**Result Created:**
+```
+Instance ID: i-9db267a74ff57fb5f
+Subnet: subnet-da5fedaa (Public Subnet A)
+Security Group: sg-c6deb3895f4fe63c6 (usms-bastion-sg)
+Public IP: 127.0.0.1 (Floci localhost)
+State: running
+```
+
+Step 5: Bastion Instance Launched - ![alt text](screenshots/step5-Restore_normal_identity.png)
+
+**Verification Checklist:**
+- Instance State: running
+- Public IP: assigned (automatic in public subnet with IGW)
+- Private IP: within VPC CIDR (10.0.1.x)
+- Security Group: applied
+
+
+### Step 6: Launch App Server (with IAM Instance Profile)
+
+**Purpose:** Create the application server in the private subnet with S3 access via IAM role.
+
+**Command Executed:**
+```bash
+aws ec2 run-instances \
+  --image-id ami-xxxxxxxx \
+  --instance-type t2.micro \
+  --subnet-id subnet-6739a4fc \
+  --security-group-ids sg-630a445a4351e4dc5 \
+  --iam-instance-profile "Name=usms-ec2-app-profile" \
+  --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=usms-app},{Key=Project,Value=USMS},{Key=Tier,Value=app}]'
+```
+
+**Result Created:**
+```
+Instance ID: i-b89ddda825ac0c44f
+Subnet: subnet-6739a4fc (Private Subnet A)
+Security Group: sg-630a445a4351e4dc5 (usms-app-sg)
+IAM Instance Profile: usms-ec2-app-profile
+Private IP: 172.22.0.4
+Public IP: None
+State: running
+```
+
+Step 6: App Instance Launched - ![alt text](screenshots/step6-key_pair.png)
+
+**Key Differences from Bastion:**
+
+| Aspect | Bastion | App Server |
+|--------|---------|------------|
+| Subnet | Public | Private |
+| Public IP | Yes (127.0.0.1) | No |
+| Security Group | usms-bastion-sg | usms-app-sg |
+| IAM Role | None | usms-ec2-app-role |
+| AWS API Access | No | Yes (via role) |
+| Internet Access | Direct | Via NAT |
+
+
+### Step 7: Verify Both Instances Running
+
+**Purpose:** Confirm both instances are healthy and properly configured.
+
+**Command Executed:**
+```bash
+aws ec2 describe-instances \
+  --filters "Name=tag:Project,Values=USMS" "Name=instance-state-name,Values=running" \
+  --query 'Reservations[].Instances[].{Name:Tags[?Key==`Name`]|[0].Value,Id:InstanceId,IP:PublicIpAddress,PrivateIP:PrivateIpAddress,State:State.Name}' \
+  --output table
+```
+
+**Result:**
+
+| Name | Instance ID | Public IP | Private IP | State |
+|------|-------------|-----------|-----------|-------|
+| usms-bastion | i-9db267a74ff57fb5f | 127.0.0.1 | 10.0.1.x | running |
+| usms-app | i-b89ddda825ac0c44f | None | 172.22.0.4 | running |
+
+Step 7: Both Instances Verified - ![alt text](screenshots/step7-verify.png)
+
+### Step 8: Create Key Pair for SSH Access
+
+**Purpose:** Generate the private key for SSH access to both instances.
+
+**Command Executed:**
+```bash
+aws ec2 create-key-pair --key-name usms-lab-key \
+  --query 'KeyMaterial' --output text > outputs/usms-lab-key.pem
+chmod 600 outputs/usms-lab-key.pem
+```
+
+**Result Created:**
+```
+File: outputs/usms-lab-key.pem
+Permissions: 600 (rw-------)
+Size: approximately 1.7 KB
+Format: OpenSSH PEM
+```
+
+
+**Security Implementation:**
+- Saved to outputs/ (matches .gitignore pattern)
+- Permissions set to 600 (only owner can read/write)
+- Never shared, never uploaded
+- Can be regenerated if lost (but instances need restart with new key)
+
+
+### Step 9: Configure Environment File
+
+**Purpose:** Export Lab 03 outputs for use in Lab 04+ and future scripts.
+
+**Command Executed:**
+```bash
+cat > configs/lab-03.env << EOF
+export USMS_BASTION_ID=i-9db267a74ff57fb5f
+export USMS_BASTION_IP=127.0.0.1
+export USMS_BASTION_SG=sg-c6deb3895f4fe63c6
+
+export USMS_APP_ID=i-b89ddda825ac0c44f
+export USMS_APP_PRIVATE_IP=172.22.0.4
+
+export USMS_KEY_NAME=usms-lab-key
+EOF
+```
+
+**Result Created:**
+```
+File: configs/lab-03.env
+Status: Version-controlled
+Used by: Lab 04+, verification scripts
+```
+
+
+## Verification Results
+
+**Verification Script:** scripts/utilities/verify-lab-03.sh
+
+**Command Executed:**
+```bash
+./scripts/utilities/verify-lab-03.sh
+```
+
+**Output:**
+
+```
+== Environment ==
+  ok   Floci container running
+  ok   AWS CLI reaches Floci
+
+== Lab 01 & 02 dependencies ==
+  ok   instance profile usms-ec2-app-profile
+  ok   VPC exists
+
+== Lab 03 instances ==
+  ok   bastion instance exists
+  ok   bastion is running
+  ok   bastion has public IP
+  ok   app instance exists
+  ok   app is running
+  ok   app has private IP
+  ok   app has IAM instance profile
+
+== Security groups ==
+  ok   bastion-sg exists
+  ok   bastion-sg allows SSH from anywhere
+
+== Files ==
+  ok   configs/lab-03.env exists
+  ok   configs/lab-03.env has no empty values
+  ok   key pair is ignored
+
+PASS=16  FAIL=0
+```
+
+Verification: Lab 03 Complete- 
+![alt text](screenshots/step7-verify.png)
+
+**Verification Summary:**
+- All 16 checks passed
+- No failures
+- Both instances healthy
+- IAM role integrated
+- Security configuration correct
+- Key pair secured
+
+
+
+## Network Flow and Connectivity
+
+### Bastion to App Server (SSH)
+
+```
+Your Machine
+  -> SSH to 127.0.0.1:22 (Floci localhost)
+  -> [Internet -> Public Subnet via IGW]
+Bastion (127.0.0.1, sg-c6deb3895f4fe63c6)
+  -> SSH to 172.22.0.4:22 (VPC private)
+  -> [Within VPC, rule allows 10.0.0.0/16 -> 22]
+App Server (172.22.0.4, sg-630a445a4351e4dc5)
+```
+
+**Commands:**
+```bash
+ssh -i outputs/usms-lab-key.pem ec2-user@127.0.0.1
+ssh -i /tmp/usms-lab-key.pem ec2-user@172.22.0.4
+```
+
+### App Server to S3 (IAM Role)
+
+```
+App Server (172.22.0.4)
+  -> AWS SDK call: aws s3 ls usms-student-data/
+  -> [Metadata Service fetches role credentials]
+  -> [STS returns temporary AccessKey + SessionToken]
+  -> [HTTP request to S3 with credentials]
+S3 Bucket (usms-student-data)
+  -> Authorization check: does role have s3:GetObject?
+  -> YES (USMSStudentDataReadWrite policy attached)
+  -> Return objects
+```
+
+**On App Server:**
+```bash
+aws s3 ls usms-student-data/
+```
+
+
+## Security Design Patterns
+
+### 1. Bastion Host Pattern
+
+**Why Use It:**
+- Eliminates direct internet exposure to private instances
+- Centralizes SSH access control to one instance
+- Enables detailed auditing of access (who logged in, when, from where)
+
+**How It Works:**
+1. Bastion: SSH open to 0.0.0.0/0 (internet)
+2. App Server: SSH open only to 10.0.0.0/16 (VPC)
+3. Result: Internet users can only reach app via bastion
+
+**In USMS Context:**
+- Bastion = secure jump point for administrators
+- App Server = application workload, hidden from internet
+- Database (Lab 04) = even more restricted, only app can access
+
+
+
+### 2. IAM Instance Profiles
+
+**Why Use It:**
+- Apps get temporary, automatically-rotating credentials
+- No need to hardcode access keys (security anti-pattern)
+- Easy to audit: who accessed what, when
+
+**How It Works:**
+1. Create role with policies (e.g., S3 read/write)
+2. Create instance profile and add role to it
+3. Launch instance with --iam-instance-profile
+4. EC2 service automatically provides temporary credentials via metadata service (169.254.169.254)
+5. SDK automatically fetches and refreshes credentials
+
+**In USMS Context:**
+- App server attached to usms-ec2-app-role via usms-ec2-app-profile
+- Policy USMSStudentDataReadWrite allows S3 access
+- App calls aws s3 ls without needing keys in a config file
+
+
+
+### 3. Security Groups as Firewalls
+
+**Why Use It:**
+- Stateful filtering: replies to outbound traffic are automatically allowed
+- Instance-level control (more granular than NACLs)
+- Easy to reference by security group ID (app SG can reference bastion SG)
+
+**How It Works:**
+```
+Inbound Rule:
+  Protocol: TCP
+  Port: 22
+  Source: 10.0.0.0/16 (VPC CIDR)
+  -> Only SSH from within VPC is allowed
+
+Outbound Rule: (default)
+  All traffic to 0.0.0.0/0
+  -> App can initiate outbound to S3, NTP, DNS, etc.
+```
+
+**In USMS Context:**
+- Bastion SG: allows SSH from internet (0.0.0.0/0)
+- App SG: allows SSH only from VPC (10.0.0.0/16), HTTP/HTTPS from internet
+- DB SG (Lab 4): allows PostgreSQL only from App SG
+
+
+
+## Troubleshooting and Common Issues
+
+### Issue 1: Cannot SSH to App Server
+
+**Error:**
+```
+ssh: connect to host 172.22.0.4 port 22: Connection refused
+```
+
+**Causes and Fixes:**
+
+1. App SG does not allow SSH from VPC
+   ```bash
+   aws ec2 describe-security-groups --group-ids sg-630a445a4351e4dc5 \
+     --query 'SecurityGroups[0].IpPermissions'
+   ```
+   Should show: FromPort: 22, IpRanges: 10.0.0.0/16
+
+2. Route tables not configured correctly
+   ```bash
+   aws ec2 describe-route-tables \
+     --filters "Name=association.subnet-id,Values=subnet-6739a4fc"
+   ```
+   Should have a route pointing to NAT gateway
+
+3. Instance does not have internet connectivity
+   - App is in private subnet
+   - Private subnet's route table must have 0.0.0.0/0 -> NAT gateway
+   - Check: aws ec2 describe-route-tables --filters "Name=route.nat-gateway-id,Values=*"
+
+
+### Issue 2: Key Pair Lost or Compromised
+
+**Scenario:** You accidentally commit usms-lab-key.pem to git or lose the file.
+
+**Recovery:**
+1. Create a new key pair:
+   ```bash
+   aws ec2 create-key-pair --key-name usms-lab-key-2 \
+     --query 'KeyMaterial' --output text > outputs/usms-lab-key-2.pem
+   ```
+
+2. Option A: Terminate and relaunch instances with new key
+   ```bash
+   aws ec2 terminate-instances --instance-ids i-9db267a74ff57fb5f i-b89ddda825ac0c44f
+   ```
+   Then re-run Lab 03 steps with new key
+
+3. Option B (if Floci supports EC2 Instance Connect): Use web console instead of key
+
+**Prevention:** .gitignore already blocks *.pem files.
+
+
+### Issue 3: App Server Cannot Access S3
+
+**Error:**
+```
+An error occurred (UnauthorizedOperation) when calling the ListBucket operation: 
+User: arn:aws:iam::000000000000:assumed-role/usms-ec2-app-role/i-xxxxx 
+is not authorized to perform: s3:ListBucket on resource: arn:aws:s3:::usms-student-data
+```
+
+**Causes and Fixes:**
+
+1. Instance profile not attached
+   ```bash
+   aws ec2 describe-instances --instance-ids i-b89ddda825ac0c44f \
+     --query 'Reservations[0].Instances[0].IamInstanceProfile'
+   ```
+   Should return the instance profile ARN
+
+2. Role does not have S3 policy
+   ```bash
+   aws iam list-attached-role-policies --role-name usms-ec2-app-role
+   ```
+   Should include USMSStudentDataReadWrite
+
+3. Policy is missing correct bucket ARN
+   ```bash
+   aws iam get-role-policy --role-name usms-ec2-app-role \
+     --policy-name USMSStudentDataReadWrite
+   ```
+   Should have:
+   - Resource: "arn:aws:s3:::usms-student-data"
+   - Resource: "arn:aws:s3:::usms-student-data/*"
+
+
+## Key Learnings
+
+1. Network Isolation Works: Private instances truly cannot be reached from the internet without a bastion
+2. IAM Roles are Superior to Keys: Automatic credential rotation, better auditing, no hardcoded secrets
+3. Security Groups Are Stateful: You only define inbound rules; return traffic is automatic
+4. Multi-Hop SSH is Awkward But Necessary: In production, use a bastion, jump host, or Bastion-as-a-Service (AWS Systems Manager Session Manager)
+5. Tagging is Critical: Enables cost allocation, automation, and resource tracking
+
