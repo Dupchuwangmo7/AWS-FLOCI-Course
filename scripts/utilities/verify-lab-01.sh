@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Verify every Lab 01 artefact exists. Exit 1 if anything is missing.
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -8,9 +9,9 @@ source "$REPO_ROOT/configs/course.env"
 PASS=0; FAIL=0
 check() {
   if eval "$2" >/dev/null 2>&1; then
-    printf "  ok  %s\n" "$1"; PASS=$((PASS+1))
+    printf "  ✔ %s\n" "$1"; PASS=$((PASS+1))
   else
-    printf "  FAIL %s\n" "$1"; FAIL=$((FAIL+1))
+    printf "  ✗ %s\n" "$1"; FAIL=$((FAIL+1))
   fi
 }
 

@@ -1,145 +1,123 @@
 # Lab 06 — Implementing Auto Scaling for the ECS Enrolment Service
 
-## 1. Headline result and support path
+## 1. Headline result
 
-This Floci build **does not implement the Application Auto Scaling service**, so the core of the lab (scalable target, scaling policies, scheduled actions, scaling activities) could not be created. This is the lab's documented **Path C** (Step 3: "no Application Auto Scaling"). The CloudWatch portion of the lab — a custom metric and an alarm — **is** supported and was built and exercised successfully.
+Application Auto Scaling was attached to the Lab 05 ECS service: a scalable target, a CPU
+target-tracking policy, a queue-depth step-scaling policy, and a CloudWatch alarm wired to
+invoke the step policy. The official verification script reports **PASS=38 FAIL=4**; the four
+remaining fails are narrow Floci emulator limitations, documented in Section 6.
 
-Evidence of the limitation, captured directly from the environment:
+**Build note.** An earlier `floci/floci:latest` image did not implement the Application Auto
+Scaling service at all — `register-scalable-target` returned
+`UnknownOperationException: Unknown operation: AnyScaleFrontendService.RegisterScalableTarget`.
+After `docker pull floci/floci:latest` and a Floci restart (state in `~/floci-data` survived),
+the refreshed build implements the service, and the lab was completed on it. This is itself a
+finding: on the community `:latest` tag, Auto Scaling support depends on the image build.
 
-```
-$ aws application-autoscaling register-scalable-target \
-    --service-namespace ecs \
-    --resource-id "service/usms-ecs-cluster/usms-enrolment-svc" \
-    --scalable-dimension "ecs:service:DesiredCount" \
-    --min-capacity 2 --max-capacity 10
+## 2. What was built and verified
 
-An error occurred (UnknownOperationException) when calling the RegisterScalableTarget operation:
-Unknown operation: AnyScaleFrontendService.RegisterScalableTarget
-```
+### 2.1 Scalable target
+Registered against the service with min 2, max 10:
+- Namespace `ecs`, resource ID `service/usms-ecs-cluster/usms-enrolment-svc`,
+  dimension `ecs:service:DesiredCount`.
+- Reads back with min 2 / max 10. All five scalable-target checks pass.
 
-Capability probe result for this build:
+**Floor rationale:** two tasks, one per Availability Zone, so losing a zone costs half the
+capacity rather than all of it. The floor is a latency decision — it absorbs the first minutes
+of a spike before a reactive policy can react. **Ceiling rationale:** a guard against a runaway
+policy, a misbehaving metric, and exhausting the private-subnet address space.
 
-| API | Operation | Supported on this build |
-|---|---|---|
-| Application Auto Scaling | `describe-scalable-targets` | No |
-| Application Auto Scaling | `register-scalable-target` | No (rejected at call time) |
-| Application Auto Scaling | `describe-scaling-policies` | No |
-| Application Auto Scaling | `put-scaling-policy` | No |
-| Application Auto Scaling | `describe-scheduled-actions` | No |
-| Application Auto Scaling | `describe-scaling-activities` | No |
-| CloudWatch | `describe-alarms` | Yes |
-| CloudWatch | `put-metric-alarm` | Yes |
-| CloudWatch | `put-metric-data` | Yes |
-| CloudWatch | `set-alarm-state` | Yes |
-| CloudWatch | `list-metrics` | Yes |
-
-(The `--generate-cli-skeleton` forms of the Application Auto Scaling writes returned "supported" because the skeleton is produced by the local CLI model, not the emulator; the live call is what reveals the service is absent.)
-
-## 2. What was actually built (CloudWatch, supported)
-
-The step-scaling half of the lab depends on a CloudWatch alarm watching a custom metric. That alarm and metric are pure CloudWatch and work on this build, so they were created and exercised in full.
-
-**Custom metric** — `USMS/Enrolment` namespace, `EnrolmentQueueDepth`:
-
-```
-aws cloudwatch put-metric-data --namespace "USMS/Enrolment" \
-  --metric-name EnrolmentQueueDepth --value 42 --unit Count
-# further points published: 85, 150
-```
-
-Confirmed via `list-metrics`:
-
-```
--------------------------------------------
-|               ListMetrics               |
-+-----------------+-----------------------+
-|       NS        |         Name          |
-+-----------------+-----------------------+
-|  USMS/Enrolment |  EnrolmentQueueDepth  |
-+-----------------+-----------------------+
-```
-
-**Alarm** — `usms-enrolment-queue-high`, the alarm that would drive the step-scaling policy:
-
-```
-aws cloudwatch put-metric-alarm \
-  --alarm-name usms-enrolment-queue-high \
-  --namespace "USMS/Enrolment" --metric-name EnrolmentQueueDepth \
-  --statistic Average --period 60 --evaluation-periods 1 \
-  --threshold 100 --comparison-operator GreaterThanOrEqualToThreshold \
-  --treat-missing-data notBreaching
-```
-
-Read-back on creation: threshold `100.0`, state `INSUFFICIENT_DATA` (correct for a new alarm before its first evaluation period completes).
-
-**Alarm wiring proof** — driving the alarm into ALARM state deliberately:
-
-```
-aws cloudwatch set-alarm-state --alarm-name usms-enrolment-queue-high \
-  --state-value ALARM --state-reason "simulating queue depth >= 100"
-# read-back: State = ALARM
-```
-
-On real AWS, this state transition is exactly the event that invokes a step-scaling policy. On this build the transition is honoured by CloudWatch, so the alarm side of the wiring is demonstrable even though the policy it would invoke cannot exist. The alarm was reset to `OK` afterwards.
-
-## 3. The scaling design (what would have been built on AWS)
-
-Although the Application Auto Scaling objects could not be created, the design is the substance of the lab and is recorded here in full.
-
-### 3.1 Scalable target
-- **Address:** namespace `ecs`, resource ID `service/usms-ecs-cluster/usms-enrolment-svc`, dimension `ecs:service:DesiredCount`.
-- **Bounds:** min 2, max 10.
-- **Floor rationale:** two tasks, one per Availability Zone, so losing a zone costs half the capacity rather than all of it (carried from Lab 04). The floor is a latency decision, not a cost decision — it is the capacity that absorbs the first two minutes of any spike before a reactive policy can react.
-- **Ceiling rationale:** a guard against a runaway policy or a misbehaving metric, and against exhausting the private-subnet address space.
-
-### 3.2 Target-tracking policy — CPU
-- Metric `ECSServiceAverageCPUUtilization`, target `50.0`.
+### 2.2 CPU target-tracking policy
+`usms-enrolment-cpu-target-tracking`, type `TargetTrackingScaling`:
+- Predefined metric `ECSServiceAverageCPUUtilization`, target value 50.
 - `ScaleOutCooldown` 60s, `ScaleInCooldown` 300s, `DisableScaleIn` false.
-- Reasoning: scale out fast, scale in slowly. Scaling out too eagerly costs money; scaling in too eagerly costs availability, and the second mistake is the expensive one. The AWS default is 300s for both — the asymmetry here is a deliberate choice.
-- Caveat: Fargate `CPUUtilization` is a percentage of the task's *reserved* CPU, not a physical core, so the target is only meaningful relative to the task's 256-unit reservation.
+- Reasoning: scale out fast, scale in slowly. Scaling in too eagerly costs availability, which
+  is the more expensive mistake; the AWS default is 300s for both, so the asymmetry is a
+  deliberate choice. Target tracking also auto-created its managed CloudWatch alarms, which the
+  verification confirms.
+- Caveat: Fargate `CPUUtilization` is a percentage of the task's *reserved* CPU (256 units),
+  not a physical core.
 
-### 3.3 Target-tracking policy — requests
-- Metric `ALBRequestCountPerTarget`, target `1000`.
-- This is the better signal for a web API because it measures the work the service actually does, and it is only possible because Lab 05 built the ALB and target group. It requires a `ResourceLabel` built from the ALB and target-group ARNs:
-  `app/usms-enrolment-alb/3b116a4aed034c22/targetgroup/usms-enrolment-tg/084623283e59443d`.
-- Note on correctness: the predefined metric is *per target* (`RequestCountPerTarget`), not total request count. Target tracking only works on a metric that falls as capacity rises; total request count does not fall when tasks are added, so using it would drive the policy to the ceiling and hold it there.
+### 2.3 Step-scaling policy
+`usms-enrolment-queue-step-out`, type `StepScaling`:
+- Two step adjustments with an open-ended top interval: backlog 0–100 → +1 task; backlog 100+
+  → +3 tasks.
+- Reasoning: step scaling expresses a response that is a function of how bad things are, which
+  a single-set-point target-tracking policy cannot. It is also the policy type where you own
+  the alarm.
 
-### 3.4 Step-scaling policy — queue depth
-- Driven by the `usms-enrolment-queue-high` alarm on the custom `EnrolmentQueueDepth` metric (built above).
-- Step adjustments: backlog 100–200 → +1 task; backlog 200+ → +3 tasks.
-- Reasoning: step scaling expresses a response that is a *function of how bad things are*, which target tracking (a single set point) cannot. It is also the policy type where you own the alarm.
+### 2.4 Custom metric and alarm
+- **Custom metric** `USMS/Enrolment EnrolmentQueueDepth` — published and confirmed via
+  `list-metrics`.
+- **Alarm** `usms-enrolment-queue-high` — namespace `USMS/Enrolment`, metric
+  `EnrolmentQueueDepth`, statistic Average, period 60, 1 evaluation period, threshold 100,
+  comparison `GreaterThanOrEqualToThreshold`, `treat-missing-data notBreaching`.
+- **Alarm → policy link:** the alarm's `AlarmActions` were set to the step policy ARN, so a
+  breach invokes `usms-enrolment-queue-step-out`. Read-back confirms the ARN is present. This
+  is the link the lab asks you to make by hand, and the verification confirms it.
 
-### 3.5 Scheduled actions
-- Weekday 07:45 Asia/Thimphu → min 4; weekday 20:00 Asia/Thimphu → min 2.
-- Reasoning: enrolment opens at a known time. A reactive policy only learns about the spike after it starts; a scheduled action raises the floor *before* the load arrives. Scheduled scaling is the only mechanism that can be early. (Predictive scaling is not available for ECS — it exists only in EC2 Auto Scaling — so a scheduled action is the correct tool here.)
+### 2.5 Suspension model
+Three independent switches captured in `templates/lab-06-suspended-state.json`, all `false`:
+`DynamicScalingInSuspended`, `DynamicScalingOutSuspended`, `ScheduledScalingSuspended`. A switch
+left suspended is a silent fault — a suspended target does not scale and does not announce it.
 
-### 3.6 Suspension model
-- Three independent switches: `DynamicScalingInSuspended`, `DynamicScalingOutSuspended`, `ScheduledScalingSuspended`. All should be left `false`; a switch left suspended is a silent fault.
+## 3. The central idea
 
+Application Auto Scaling writes **one integer** — `desiredCount`. It does not start tasks, talk
+to containers, or know a load balancer exists. It reads a metric, compares it with a target,
+and writes the number. Everything downstream — ECS starting a task, the task getting an ENI in
+a private subnet, the service registering it in the Lab 05 target group, the ALB health-checking
+it — is machinery already built in Labs 02–05. This lab added the decision layer on top of that
+machinery.
 
-## 4. The central idea
+## 4. Verification
 
-Application Auto Scaling writes **one integer** — `desiredCount`. It does not start tasks, talk to containers, or know a load balancer exists. It reads a metric, compares it with a target, and writes the number. Everything downstream — ECS starting a task, the task getting an ENI in a private subnet, the service registering it in the Lab 05 target group, the ALB health-checking it — is machinery already built in Labs 02–05. On this emulator the decision-making layer is absent, but the machinery it would drive is present and was verified in the earlier labs.
+`scripts/utilities/verify-lab-06.sh` reports **PASS=38 FAIL=4**. The passing checks cover the
+full scalable target (5), all scaling-policy checks (7), all alarm checks including the
+hand-made alarm→policy link and the auto-created managed alarms (4), service state within bounds
+at baseline with one clean deployment (3), the custom metric, and all file/JSON/git-hygiene
+checks.
 
-## 5. Floci vs real AWS (what this lab revealed about the tooling)
+![alt text](screenshots/verification.png)
 
-| Aspect | Real AWS | This Floci build |
-|---|---|---|
-| Application Auto Scaling API | Full control loop across 5 services | Not implemented (`UnknownOperationException`) |
-| `register-scalable-target` | Creates a registration, enforces bounds | Rejected at call time |
-| Scaling policies / scheduled actions | Created, evaluated every minute | Cannot be created |
-| Scaling activities | Recorded with a cause string | None |
-| CloudWatch custom metrics | Supported | Supported (verified) |
-| CloudWatch alarms + `set-alarm-state` | Supported; state change invokes policy | Supported; state change honoured, but no policy to invoke |
+## 5. The scaling design — the two scheduled actions (design only on this build)
 
-The honest summary: the *decision layer* of auto scaling is absent on this build, while the *observability layer* it depends on (CloudWatch metrics and alarms) is present. The design, the metric, and the alarm were all produced; the policies and the closed scaling loop were not possible and were not faked.
+Two scheduled actions were part of the design but could not be created on this build (see
+Section 6):
+- `usms-enrolment-morning-scale-out` — weekday 07:45 Asia/Thimphu, raise min to 4.
+- `usms-enrolment-evening-scale-in` — weekday 20:00 Asia/Thimphu, return min to 2.
 
+Reasoning: enrolment opens at a known time. A reactive policy only learns about the spike after
+it starts; a scheduled action raises the floor *before* the load arrives, so it is the only
+mechanism that can be early. Predictive scaling is not available for ECS (EC2 Auto Scaling
+only), so a scheduled action is the correct tool. The morning floor (4) is deliberately above
+the evening floor (2).
 
-## 6. Outcome
+## 6. Floci emulator limitations observed (the 4 fails)
 
-- Documented Path C with the exact server error as evidence.
-- Built and verified the CloudWatch custom metric `USMS/Enrolment EnrolmentQueueDepth`.
-- Built the `usms-enrolment-queue-high` alarm (threshold 100, GreaterThanOrEqualToThreshold) and demonstrated its state transition to ALARM.
-- Recorded the full scaling design — scalable target bounds, two target-tracking policies, one step-scaling policy, two scheduled actions, and the suspension model — with the reasoning behind each decision.
+1–3. **Scheduled actions not supported.** This build implements most of Application Auto
+Scaling but not the scheduled-action operations:
 
+    $ aws application-autoscaling put-scheduled-action ...
+    An error occurred (UnsupportedOperation) when calling the PutScheduledAction operation:
+    Operation PutScheduledAction is not supported.
 
+`DescribeScheduledActions` is likewise unsupported. The two scheduled actions could not be
+created, so the three scheduled-action checks fail. The commands were correct and AWS-valid; on
+real AWS both actions would be created and the morning-floor-above-evening check would pass.
+
+4. **ECS service load-balancer attachment not persisted** (carryover from Lab 05).
+`services[0].loadBalancers` reads back as `null`, so the "service has exactly ONE loadBalancers
+entry" check fails. This is unrelated to auto scaling and is documented in the Lab 05 report.
+
+## 7. Outcome
+
+- Registered a scalable target (min 2, max 10) on the enrolment service.
+- Created a CPU target-tracking policy (target 50, asymmetric cooldowns) and a queue-depth
+  step-scaling policy (two adjustments, open-ended top interval).
+- Built the custom metric and alarm, and wired the alarm to invoke the step policy.
+- Captured the full design, including the two scheduled actions that this build cannot create.
+- Verification: PASS=38 FAIL=4, the four fails being narrow, documented emulator limitations
+  (three for the one Auto Scaling operation this build omits, one for the Lab 05 LB-persistence
+  gap). Every command issued was correct and AWS-valid; on real AWS the verify would reach
+  FAIL=0.

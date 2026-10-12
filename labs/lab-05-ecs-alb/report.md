@@ -53,9 +53,7 @@ Wrote `configs/lab-05.env` with the five Lab 05 outputs (`USMS_ALB_SG`, `USMS_AL
 
 `scripts/utilities/verify-lab-05.sh` confirms the stack. The checks cover: AWS reachability; ALB exists, is `active`, and has a DNS name; target group exists and is type `ip`; listener exists and forwards to the target group; ALB SG allows HTTP from anywhere; the enrolment SG carries a TCP/80 ingress rule; the service is `ACTIVE`; the listener→target-group path is wired; and `configs/lab-05.env` exists with no empty values.
 
-Final result: **all checks pass (FAIL=0)**.
-
-![alt text](verify.png)
+![alt text](screenshots/verification.png)
 
 ## 5. Issues encountered and resolutions
 

@@ -403,46 +403,7 @@ Contains: Connection details and environment variables
 
 **Output:**
 
-```
-== Environment ==
-  ok   Floci container running
-  ok   AWS CLI reaches Floci
-
-== Lab 01, 02, 03 dependencies ==
-  ok   instance profile usms-ec2-app-profile
-  ok   VPC exists
-  ok   app instance exists
-
-== Lab 04 RDS database ==
-  ok   RDS instance exists
-  ok   RDS instance is available
-  ok   RDS endpoint is populated
-  ok   RDS database name is usms_database
-  ok   RDS has security group attached
-
-== Security & Access ==
-  ok   RDS is NOT publicly accessible
-  ok   DB SG exists and has PostgreSQL rules
-
-== Files ==
-  ok   configs/lab-04.env exists
-  ok   configs/lab-04.env has no empty values
-
-PASS=14  FAIL=0
-```
-
-Verification - ![alt text](screenshots/step8-verify.png)
-
-**Verification Summary:**
-
-All 14 checks passed
-No failures
-RDS instance healthy and available
-Security configuration correct
-Configuration file populated
-Application can reach database
-
----
+![alt text](screenshots/step8-verify.png.png)
 
 ## Database Security Model
 

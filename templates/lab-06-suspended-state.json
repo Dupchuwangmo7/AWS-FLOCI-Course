@@ -1,0 +1,5 @@
+{
+  "DynamicScalingInSuspended": false,
+  "DynamicScalingOutSuspended": false,
+  "ScheduledScalingSuspended": false
+}

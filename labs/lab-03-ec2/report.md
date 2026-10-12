@@ -441,49 +441,7 @@ Used by: Lab 04+, verification scripts
 ./scripts/utilities/verify-lab-03.sh
 ```
 
-**Output:**
-
-```
-== Environment ==
-  ok   Floci container running
-  ok   AWS CLI reaches Floci
-
-== Lab 01 & 02 dependencies ==
-  ok   instance profile usms-ec2-app-profile
-  ok   VPC exists
-
-== Lab 03 instances ==
-  ok   bastion instance exists
-  ok   bastion is running
-  ok   bastion has public IP
-  ok   app instance exists
-  ok   app is running
-  ok   app has private IP
-  ok   app has IAM instance profile
-
-== Security groups ==
-  ok   bastion-sg exists
-  ok   bastion-sg allows SSH from anywhere
-
-== Files ==
-  ok   configs/lab-03.env exists
-  ok   configs/lab-03.env has no empty values
-  ok   key pair is ignored
-
-PASS=16  FAIL=0
-```
-
-Verification: Lab 03 Complete- 
-![alt text](screenshots/step7-verify.png)
-
-**Verification Summary:**
-- All 16 checks passed
-- No failures
-- Both instances healthy
-- IAM role integrated
-- Security configuration correct
-- Key pair secured
-
+![alt text](screenshots/step7-verfication.png)
 
 
 ## Network Flow and Connectivity

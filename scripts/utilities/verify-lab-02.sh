@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Verify every Lab 02 artefact exists and is configured correctly.
+# Exit 1 if anything is missing. Safe to run at any time; read-only.
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -57,7 +59,7 @@ check "private subnet a does NOT auto-assign public IP" \
   "test \"\$(aws ec2 describe-subnets --subnet-ids $USMS_PRIVATE_SUBNET_A --query 'Subnets[0].MapPublicIpOnLaunch' --output text)\" = False"
 
 check "public rt has a default route to an igw" \
-  "aws ec2 describe-route-tables --route-table-ids $USMS_PUBLIC_RT --query 'RouteTables[0].Routes[].GatewayId' --output text | grep -q 'igw-'"
+  "aws ec2 describe-route-tables --route-table-ids $USMS_PUBLIC_RT --query 'RouteTables[0].Routes[].GatewayId' --output text | grep -q '^igw-\|	igw-'"
 check "public subnet a is associated with usms-public-rt" \
   "test \"\$(aws ec2 describe-route-tables --filters Name=association.subnet-id,Values=$USMS_PUBLIC_SUBNET_A --query 'RouteTables[0].RouteTableId' --output text)\" = $USMS_PUBLIC_RT"
 check "private subnet a is associated with usms-private-rt" \
@@ -69,6 +71,8 @@ check "usms-app-sg exists"            "aws ec2 describe-security-groups --group-
 check "usms-app-sg allows tcp 80"     \
   "aws ec2 describe-security-groups --group-ids $USMS_APP_SG --query 'SecurityGroups[0].IpPermissions[].FromPort' --output text | grep -qw 80"
 check "usms-db-sg exists"             "aws ec2 describe-security-groups --group-ids $USMS_DB_SG"
+check "usms-db-sg is sourced from usms-app-sg (not a CIDR)" \
+  "test \"\$(aws ec2 describe-security-groups --group-ids $USMS_DB_SG --query 'SecurityGroups[0].IpPermissions[0].UserIdGroupPairs[0].GroupId' --output text)\" = $USMS_APP_SG"
 
 check "usms-private-nacl exists"      "aws ec2 describe-network-acls --network-acl-ids $USMS_PRIVATE_NACL"
 check "usms-private-nacl is attached to the private subnet" \
@@ -88,8 +92,7 @@ check "configs/lab-02.env has no empty values" \
   "! grep -qE 'export [A-Z_]+=$|=None$' configs/lab-02.env"
 check "policies/usms-db-sg-ingress.json is valid JSON" \
   "python3 -m json.tool policies/usms-db-sg-ingress.json"
-check "no untracked secrets in outputs/" \
-  "! git status --short | grep -q '^?? outputs/[a-z]'"
+check "no secret is tracked by git" "! git ls-files | grep -q '^outputs/'"
 check ".gitignore uses outputs/* not outputs/" "grep -q '^outputs/\*' .gitignore"
 
 echo; echo "PASS=$PASS  FAIL=$FAIL"

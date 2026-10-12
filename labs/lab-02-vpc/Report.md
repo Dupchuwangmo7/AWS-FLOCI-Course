@@ -238,6 +238,10 @@ The environment file was regenerated and checked to confirm that `USMS_PRIVATE_S
 
 ![alt text](screenshots/EX05-second-private-subnet.png)
 
+## Verfication 
+
+![alt text](screenshots/verification.png)
+
 ## 7. Review Questions
 
 ### 1. What makes a subnet public?

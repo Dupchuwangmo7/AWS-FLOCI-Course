@@ -1112,6 +1112,9 @@ This meant that the IAM resources created previously were no longer available.
 
 The `developers` group and `lab-developer` user were recreated.
 
+### Verification 
+
+![alt text](screenshots/verification.png)
 
 # 31. Learning Outcomes
 
