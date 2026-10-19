@@ -1,12 +1,5 @@
 # Lab 08 — EKS Scaling and Service Exposure
 
-**Course:** DSO303
-**Project:** USMS (University Student Management System)
-**Environment:** Floci AWS emulator, account `000000000000`, region `us-east-1`; EKS cluster `usms-eks-cluster` (k3s 1.30) from Lab 07.
-**Support path:** Path A (the `eks` API is implemented).
-**Result:** `verify-lab-08.sh` reports **PASS=32 FAIL=2**; both fails are documented emulator/tooling limits (Section 6).
-
-
 ## 1. Objective
 
 Take Lab 07's three fixed-size, cluster-internal microservices and make them (a) elastic and (b) reachable, by climbing two ladders: a **scaling** ladder (manual → declarative → HorizontalPodAutoscaler → node-group) and an **exposure** ladder (ClusterIP → NodePort → LoadBalancer → Ingress). Scaling is always one integer; what changes at each rung is *who writes it*.
