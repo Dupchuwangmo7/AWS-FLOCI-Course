@@ -1,0 +1,8 @@
+[
+  {
+    "IpProtocol": "tcp",
+    "FromPort": 22,
+    "ToPort": 22,
+    "UserIdGroupPairs": [{ "GroupId": "sg-c6deb3895f4fe63c6", "Description": "SSH from the bastion host only - replaces the 10.0.0.0/16 rule" }]
+  }
+]

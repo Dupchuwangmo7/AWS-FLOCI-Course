@@ -1,0 +1,8 @@
+[
+  {
+    "IpProtocol": "tcp",
+    "FromPort": 80,
+    "ToPort": 80,
+    "UserIdGroupPairs": [{ "GroupId": "sg-33f7f9db3cd53212f", "Description": "HTTP to the enrolment tasks - the only place the ALB sends traffic" }]
+  }
+]
