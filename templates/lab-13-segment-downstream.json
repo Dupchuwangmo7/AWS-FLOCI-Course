@@ -1,0 +1,16 @@
+{
+  "name": "usms-student-data",
+  "id": "8eb14ab3b5b6aedc",
+  "trace_id": "1-6b034f04-9fdca401d2bd9dfc300551ba",
+  "parent_id": "c38398b18d5ccb79",
+  "type": "subsegment",
+  "origin": "AWS::S3::Bucket",
+  "namespace": "aws",
+  "start_time": 1795378947.227,
+  "end_time": 1795378947.297,
+  "http": {
+    "response": {
+      "status": 200
+    }
+  }
+}

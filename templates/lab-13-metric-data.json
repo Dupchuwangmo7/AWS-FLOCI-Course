@@ -1,0 +1,11 @@
+[
+  {"MetricName": "TranscriptsProcessed", "Timestamp": "2026-11-22T20:15:04Z", "Unit": "Count", "Value": 1,
+   "Dimensions": [{"Name": "Faculty", "Value": "science"}, {"Name": "Stage", "Value": "notify"}]},
+  {"MetricName": "TranscriptsProcessed", "Timestamp": "2026-11-22T20:15:04Z", "Unit": "Count", "Value": 1,
+   "Dimensions": [{"Name": "Faculty", "Value": "engineering"}, {"Name": "Stage", "Value": "notify"}]},
+  {"MetricName": "TranscriptsProcessed", "Timestamp": "2026-11-22T20:15:04Z", "Unit": "Count", "Value": 2},
+  {"MetricName": "TranscriptLagSeconds", "Timestamp": "2026-11-22T20:15:04Z", "Unit": "Seconds", "Value": 0.42,
+   "Dimensions": [{"Name": "Stage", "Value": "notify"}]},
+  {"MetricName": "TranscriptLagSeconds", "Timestamp": "2026-11-22T20:15:04Z", "Unit": "Seconds", "Value": 1.91,
+   "Dimensions": [{"Name": "Stage", "Value": "notify"}]}
+]

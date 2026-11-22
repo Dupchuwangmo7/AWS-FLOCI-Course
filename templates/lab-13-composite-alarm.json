@@ -1,0 +1,6 @@
+{
+  "AlarmName": "usms-transcript-pipeline-down",
+  "AlarmDescription": "Transcript pipeline is down: lagging OR silent",
+  "AlarmRule": "ALARM(\"usms-transcript-lag-high\") OR ALARM(\"usms-notify-silence\")",
+  "ActionsEnabled": true
+}

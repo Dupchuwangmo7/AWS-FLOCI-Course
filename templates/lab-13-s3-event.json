@@ -1,0 +1,21 @@
+{
+  "Records": [
+    {
+      "eventVersion": "2.1",
+      "eventSource": "aws:s3",
+      "awsRegion": "us-east-1",
+      "eventTime": "2026-11-22T20:17:05.000Z",
+      "eventName": "ObjectCreated:Put",
+      "s3": {
+        "bucket": {
+          "name": "usms-student-data",
+          "arn": "arn:aws:s3:::usms-student-data"
+        },
+        "object": {
+          "key": "transcripts/science/lab-13-probe.json",
+          "size": 64
+        }
+      }
+    }
+  ]
+}

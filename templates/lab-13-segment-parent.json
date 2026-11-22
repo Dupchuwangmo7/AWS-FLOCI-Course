@@ -1,0 +1,21 @@
+{
+  "name": "usms-transcript-notifier",
+  "id": "c38398b18d5ccb79",
+  "trace_id": "1-6b034f04-9fdca401d2bd9dfc300551ba",
+  "start_time": 1795378947.207,
+  "end_time": 1795378948.117,
+  "origin": "AWS::Lambda::Function",
+  "annotations": {
+    "faculty": "science",
+    "stage": "notify",
+    "transcript_bytes": 64,
+    "readable": true
+  },
+  "metadata": {
+    "usms": {
+      "bucket": "usms-student-data",
+      "key": "transcripts/science/lab-13-probe.json",
+      "lab": 13
+    }
+  }
+}

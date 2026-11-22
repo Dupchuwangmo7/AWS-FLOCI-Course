@@ -1,0 +1,23 @@
+{
+  "widgets": [
+    { "type": "text", "x": 0, "y": 0, "width": 24, "height": 3,
+      "properties": { "markdown": "## USMS transcript pipeline\n**Runbook:** lag-high -> check notifier duration and S3 head_object; notify-silence -> check the S3 notification and the `live` alias; composite = page.  Logs: `/usms/central/application`, `/aws/lambda/usms-transcript-notifier`." } },
+    { "type": "metric", "x": 0, "y": 3, "width": 12, "height": 6,
+      "properties": { "title": "Transcripts processed by faculty", "view": "timeSeries", "region": "us-east-1", "stat": "Sum", "period": 300,
+        "metrics": [ ["USMS/Application", "TranscriptsProcessed", "Faculty", "science", "Stage", "notify"],
+                     ["USMS/Application", "TranscriptsProcessed", "Faculty", "engineering", "Stage", "notify"] ] } },
+    { "type": "metric", "x": 12, "y": 3, "width": 12, "height": 6,
+      "properties": { "title": "Notify lag (s)", "view": "timeSeries", "region": "us-east-1", "period": 60,
+        "metrics": [ ["USMS/Application", "TranscriptLagSeconds", "Stage", "notify", { "stat": "Maximum", "label": "max" }],
+                     ["USMS/Application", "TranscriptLagSeconds", "Stage", "notify", { "stat": "Average", "label": "avg" }] ],
+        "annotations": { "horizontal": [ { "label": "lag-high threshold", "value": 2 } ] } } },
+    { "type": "metric", "x": 0, "y": 9, "width": 12, "height": 6,
+      "properties": { "title": "Notifications and central errors (15 min)", "view": "singleValue", "region": "us-east-1", "stat": "Sum", "period": 900,
+        "metrics": [ ["USMS/Application", "NotifyCount"], ["USMS/Application", "CentralErrorCount"] ] } },
+    { "type": "alarm", "x": 12, "y": 9, "width": 12, "height": 6,
+      "properties": { "title": "Pipeline alarms",
+        "alarms": [ "arn:aws:cloudwatch:us-east-1:000000000000:alarm:usms-transcript-pipeline-down",
+                    "arn:aws:cloudwatch:us-east-1:000000000000:alarm:usms-transcript-lag-high",
+                    "arn:aws:cloudwatch:us-east-1:000000000000:alarm:usms-notify-silence" ] } }
+  ]
+}

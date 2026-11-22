@@ -1,0 +1,50 @@
+{
+  "name": "usms-transcript-notifier",
+  "id": "c38398b18d5ccb79",
+  "trace_id": "1-6b034f04-9fdca401d2bd9dfc300551ba",
+  "start_time": 1795378947.207,
+  "end_time": 1795378948.117,
+  "origin": "AWS::Lambda::Function",
+  "annotations": {
+    "faculty": "science",
+    "stage": "notify",
+    "transcript_bytes": 64,
+    "readable": true
+  },
+  "metadata": {
+    "usms": {
+      "bucket": "usms-student-data",
+      "key": "transcripts/science/lab-13-probe.json",
+      "lab": 13
+    }
+  },
+  "subsegments": [
+    {
+      "id": "c539e579d7b9c4f1",
+      "name": "s3-head-object",
+      "namespace": "aws",
+      "start_time": 1795378947.227,
+      "end_time": 1795378947.297,
+      "aws": {
+        "operation": "HeadObject"
+      }
+    },
+    {
+      "id": "0e2a4fe93d50c26b",
+      "name": "render-pdf",
+      "namespace": "remote",
+      "start_time": 1795378947.307,
+      "end_time": 1795378948.007
+    },
+    {
+      "id": "1888a3b1ecb8d062",
+      "name": "cloudwatch-put-metric-data",
+      "namespace": "aws",
+      "start_time": 1795378948.017,
+      "end_time": 1795378948.087,
+      "aws": {
+        "operation": "PutMetricData"
+      }
+    }
+  ]
+}
