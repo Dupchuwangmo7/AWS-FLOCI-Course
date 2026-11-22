@@ -248,7 +248,7 @@ Step 10's rule is to change only the image, so memory stayed at its real baselin
 
 **2. "no secret is tracked": false positive.** The only tracked path under `outputs/` is `outputs/.gitkeep`, the intentional empty placeholder. `.gitignore` blocks every real output; no credential, key or secret is tracked. This is the same result as in every previous lab.
 
-![alt text](< screenshots/verfication.png>)
+![alt text](screenshots/verfication.png)
 
 ## 9. Outcome
 
