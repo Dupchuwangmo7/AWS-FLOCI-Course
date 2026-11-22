@@ -29,3 +29,4 @@ Thumbs.db
 .vscode/
 .idea/
 labs/lab-11-cicd/app/dist/
+docker-compose.yml.bak-*

@@ -2,26 +2,39 @@ version: 0.2
 
 env:
   variables:
-    SERVICE_NAME: usms-enrolment
+    SERVICE_NAME: enrolment
     ARTIFACT_DIR: dist
+    IMAGE_REPO_URI: nginx
 
 phases:
   install:
     commands:
-      - echo "install - toolchain check"
+      - echo "install - tool versions"
       - python3 --version
+      - docker --version || echo "docker CLI not installed"
+      - aws --version || echo "aws CLI not installed"
   pre_build:
     commands:
-      - echo "pre_build - validate configuration"
+      - echo "pre_build - validate configuration and log in to the registry"
+      - test -s VERSION
       - python3 -m json.tool config/service.json > /dev/null
       - |
         grep -q '"container": "enrolment-api"' config/service.json
       - |
         grep -q '"port": 80' config/service.json
-      - test -s VERSION
+      - export IMAGE_TAG="$(cat VERSION)"
+      - export IMAGE_URI="${IMAGE_REPO_URI}:${IMAGE_TAG}"
+      - echo "image will be $IMAGE_URI"
+      - |
+        if docker info > /dev/null 2>&1 && [ "$IMAGE_REPO_URI" != "nginx" ]; then
+          aws ecr get-login-password --region "${AWS_REGION_COURSE:-us-east-1}" \
+            | docker login --username AWS --password-stdin "${IMAGE_REPO_URI%%/*}"
+        else
+          echo "docker not reachable or no registry set - skipping ECR login"
+        fi
   build:
     commands:
-      - echo "build - assemble $ARTIFACT_DIR from src"
+      - echo "build - assemble $ARTIFACT_DIR, build and push the image"
       - rm -rf "$ARTIFACT_DIR" && mkdir -p "$ARTIFACT_DIR"
       - cp -R src/. "$ARTIFACT_DIR"/
       - |
@@ -33,17 +46,31 @@ phases:
         p = os.path.join(d, 'index.html')
         s = open(p).read().replace('__RELEASE__', release).replace('__BUILT_AT__', built)
         open(p, 'w').write(s)
-        meta = {'service': os.environ.get('SERVICE_NAME', 'usms-enrolment'),
+        meta = {'service': os.environ.get('SERVICE_NAME', 'enrolment'),
                 'release': release, 'builtAt': built,
                 'buildId': os.environ.get('CODEBUILD_BUILD_ID', 'local'),
-                'sourceVersion': os.environ.get('CODEBUILD_RESOLVED_SOURCE_VERSION', 'local')}
+                'sourceVersion': os.environ.get('CODEBUILD_RESOLVED_SOURCE_VERSION', 'local'),
+                'imageUri': os.environ['IMAGE_URI']}
         json.dump(meta, open(os.path.join(d, 'build-metadata.json'), 'w'), indent=2)
         print('built release', release, 'at', built)
+        "
+      - |
+        if docker info > /dev/null 2>&1 && [ "$IMAGE_REPO_URI" != "nginx" ]; then
+          docker build -t "$IMAGE_URI" . && docker push "$IMAGE_URI"
+        else
+          echo "docker not reachable or no registry set - image not built"
+        fi
+      - |
+        python3 -c "
+        import json, os
+        defs = [{'name': 'enrolment-api', 'imageUri': os.environ['IMAGE_URI']}]
+        json.dump(defs, open(os.path.join(os.environ['ARTIFACT_DIR'], 'imagedefinitions.json'), 'w'))
         "
   post_build:
     commands:
       - echo "post_build - smoke tests"
       - bash tests/smoke.sh "$ARTIFACT_DIR"
+      - cat "$ARTIFACT_DIR/imagedefinitions.json" && echo
 
 artifacts:
   files:

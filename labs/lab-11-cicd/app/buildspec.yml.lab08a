@@ -1,0 +1,51 @@
+version: 0.2
+
+env:
+  variables:
+    SERVICE_NAME: usms-enrolment
+    ARTIFACT_DIR: dist
+
+phases:
+  install:
+    commands:
+      - echo "install - toolchain check"
+      - python3 --version
+  pre_build:
+    commands:
+      - echo "pre_build - validate configuration"
+      - python3 -m json.tool config/service.json > /dev/null
+      - |
+        grep -q '"container": "enrolment-api"' config/service.json
+      - |
+        grep -q '"port": 80' config/service.json
+      - test -s VERSION
+  build:
+    commands:
+      - echo "build - assemble $ARTIFACT_DIR from src"
+      - rm -rf "$ARTIFACT_DIR" && mkdir -p "$ARTIFACT_DIR"
+      - cp -R src/. "$ARTIFACT_DIR"/
+      - |
+        python3 -c "
+        import json, os, datetime
+        d = os.environ.get('ARTIFACT_DIR', 'dist')
+        release = open('VERSION').read().strip()
+        built = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+        p = os.path.join(d, 'index.html')
+        s = open(p).read().replace('__RELEASE__', release).replace('__BUILT_AT__', built)
+        open(p, 'w').write(s)
+        meta = {'service': os.environ.get('SERVICE_NAME', 'usms-enrolment'),
+                'release': release, 'builtAt': built,
+                'buildId': os.environ.get('CODEBUILD_BUILD_ID', 'local'),
+                'sourceVersion': os.environ.get('CODEBUILD_RESOLVED_SOURCE_VERSION', 'local')}
+        json.dump(meta, open(os.path.join(d, 'build-metadata.json'), 'w'), indent=2)
+        print('built release', release, 'at', built)
+        "
+  post_build:
+    commands:
+      - echo "post_build - smoke tests"
+      - bash tests/smoke.sh "$ARTIFACT_DIR"
+
+artifacts:
+  files:
+    - '**/*'
+  base-directory: dist

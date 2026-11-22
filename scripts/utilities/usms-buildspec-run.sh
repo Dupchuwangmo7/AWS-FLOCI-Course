@@ -5,7 +5,8 @@
 #
 # Reads <app-dir>/buildspec.yml (PyYAML if installed, otherwise a built-in
 # minimal parser for the subset CodeBuild buildspecs use), generates one bash
-# script that exports env.variables and runs install -> pre_build -> build ->
+# script that exports env.variables (unless already set in the environment, as a
+# CodeBuild project variable would be) and runs install -> pre_build -> build ->
 # post_build in order inside <app-dir>, and stops at the first failing command.
 #
 # Differences from CodeBuild: no CODEBUILD_* variables (build-metadata.json
@@ -95,8 +96,10 @@ except ImportError:
 out = ["set -o pipefail",
        "echo '[runner] parsed buildspec with %s'" % parser]
 for k, v in ((spec.get("env") or {}).get("variables") or {}).items():
-    out.append("export %s=%s" % (k, shlex.quote(str(v))))
-    out.append("echo '[runner] env %s=%s'" % (k, str(v).replace("'", "")))
+    # CodeBuild precedence: start-build override > project variable > buildspec default.
+    # A variable already set in the environment plays the role of the project variable.
+    out.append('if [ -z "${%s+x}" ]; then export %s=%s; fi' % (k, k, shlex.quote(str(v))))
+    out.append('echo "[runner] env %s=${%s}"' % (k, k))
 phases = spec.get("phases") or {}
 for ph in PHASES:
     cmds = (phases.get(ph) or {}).get("commands") or []
