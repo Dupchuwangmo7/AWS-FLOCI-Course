@@ -1,0 +1,8 @@
+{
+  "service": "usms-enrolment",
+  "port": 80,
+  "healthPath": "/healthz.html",
+  "cluster": "usms-ecs-cluster",
+  "ecsService": "usms-enrolment-svc",
+  "container": "enrolment-api"
+}

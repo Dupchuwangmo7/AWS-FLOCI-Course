@@ -1,0 +1,30 @@
+{
+  "name": "usms-enrolment-build",
+  "description": "Builds and smoke-tests the USMS enrolment static release",
+  "source": {
+    "type": "S3",
+    "location": "usms-pipeline-artifacts/source/usms-enrolment-src.zip",
+    "buildspec": "buildspec.yml"
+  },
+  "artifacts": {
+    "type": "S3",
+    "location": "usms-pipeline-artifacts",
+    "path": "standalone",
+    "name": "usms-enrolment-build.zip",
+    "packaging": "ZIP"
+  },
+  "environment": {
+    "type": "LINUX_CONTAINER",
+    "image": "aws/codebuild/standard:7.0",
+    "computeType": "BUILD_GENERAL1_SMALL"
+  },
+  "serviceRole": "arn:aws:iam::000000000000:role/usms-codebuild-role",
+  "timeoutInMinutes": 15,
+  "logsConfig": {
+    "cloudWatchLogs": { "status": "ENABLED", "groupName": "/aws/codebuild/usms-enrolment-build" }
+  },
+  "tags": [
+    { "key": "Project", "value": "USMS" },
+    { "key": "Lab", "value": "11" }
+  ]
+}
